@@ -13,6 +13,13 @@
   [hidden] { display: none !important; }
 </style>
 <title>MindShift Clinical Companion</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#27963C">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="MindShift">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&family=Figtree:wght@400;500;600;700&family=Zilla+Slab:wght@500;600;700&display=swap">
@@ -97,6 +104,12 @@
 <script src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.24.7/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dexie@4.4.6/dist/dexie.min.js"></script>
+<script>
+  if ("serviceWorker" in navigator && location.protocol === "https:") {
+    window.addEventListener("load", function () { navigator.serviceWorker.register("/sw.js").catch(function () {}); });
+  }
+</script>
 <!-- Clerk: real sign-in and sign-up -->
 <script defer crossorigin="anonymous" src="https://assured-cobra-233.clerk.accounts.dev/npm/@clerk/ui@1/dist/ui.browser.js" type="text/javascript"></script>
 <script id="clerk-js" defer crossorigin="anonymous" data-clerk-publishable-key="pk_test_YXNzdXJlZC1jb2JyYS0yMzMuY2xlcmsuYWNjb3VudHMuZGV2JA" src="https://assured-cobra-233.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js" type="text/javascript"></script>
@@ -364,6 +377,111 @@ function MindShiftLogo({ className = "", inkColor = "#231F20" }) {
   );
 }
 
+/* ---------- On-device encrypted storage (IndexedDB via Dexie + Web Crypto) ----------
+   Everything a client enters is saved only in this browser, encrypted with AES-GCM 256.
+   Each signed-in user gets their own non-extractable key, created on this device.
+   Nothing here talks to a server. Never log the data in this section. */
+let vaultDb = null;
+function getVaultDb() {
+  if (!window.Dexie || !window.indexedDB || !(window.crypto && window.crypto.subtle)) return null;
+  if (!vaultDb) {
+    vaultDb = new window.Dexie("MindShiftCompanionDB");
+    vaultDb.version(1).stores({ vault: "userId, updatedAt", keys: "userId" });
+  }
+  return vaultDb;
+}
+const vaultKeys = new Map();
+const vaultAad = (userId) => new TextEncoder().encode(`MindShift|vault|v1|${userId}`);
+async function vaultKey(userId) {
+  if (vaultKeys.has(userId)) return vaultKeys.get(userId);
+  const db = getVaultDb();
+  const found = await db.keys.get(userId);
+  let key = found && found.key;
+  if (!key) {
+    const created = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+    key = await db.transaction("rw", db.keys, async () => {
+      const again = await db.keys.get(userId);
+      if (again) return again.key;
+      await db.keys.put({ userId, key: created, createdAt: Date.now() });
+      return created;
+    });
+  }
+  vaultKeys.set(userId, key);
+  return key;
+}
+async function vaultSave(userId, data) {
+  try {
+    const db = getVaultDb(); if (!db || !userId) return false;
+    const key = await vaultKey(userId);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: vaultAad(userId) }, key, new TextEncoder().encode(JSON.stringify(data)));
+    await db.vault.put({ userId, iv, ciphertext, updatedAt: Date.now() });
+    return true;
+  } catch (e) { return false; }
+}
+async function vaultLoad(userId) {
+  try {
+    const db = getVaultDb(); if (!db || !userId) return null;
+    const rec = await db.vault.get(userId); if (!rec) return null;
+    const key = await vaultKey(userId);
+    const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: rec.iv, additionalData: vaultAad(userId) }, key, rec.ciphertext);
+    return JSON.parse(new TextDecoder().decode(plain));
+  } catch (e) { return null; }
+}
+async function vaultErase(userId) {
+  try {
+    const db = getVaultDb(); if (!db) return;
+    await db.transaction("rw", db.vault, db.keys, async () => { await db.vault.delete(userId); await db.keys.delete(userId); });
+  } catch (e) { /* nothing to erase */ }
+  vaultKeys.delete(userId);
+}
+function vaultForget() { vaultKeys.clear(); }
+let persistAsked = false;
+function askPersistentStorage() {
+  if (persistAsked) return; persistAsked = true;
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {}); } catch (e) {}
+}
+const isStandalone = () => (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || window.navigator.standalone === true;
+
+function DeviceDataCard({ user, onErase, deferredInstall, onInstall }) {
+  const [confirm, setConfirm] = useState(false);
+  const [installed, setInstalled] = useState(isStandalone());
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  return (
+    <div className="grid md:grid-cols-2 gap-5 mt-5">
+      {!installed && (
+        <Card className="p-5 flex gap-4 items-start">
+          <img src="/apple-touch-icon.png" alt="" className="w-12 h-12 rounded-xl shadow shrink-0" onError={(e) => { e.currentTarget.style.display = "none"; }} />
+          <div className="flex-1 flex flex-col gap-2">
+            <p className="font-semibold">Get the MindShift app</p>
+            {deferredInstall ? (
+              <><p className="text-sm text-muted">Add MindShift to your home screen. It opens full-screen and keeps your entries safely on this device.</p>
+                <Btn className="self-start" onClick={async () => { const ok = await onInstall(); if (ok) setInstalled(true); }}>Install app</Btn></>
+            ) : ios ? (
+              <p className="text-sm text-muted">In Safari, tap <b>Share</b> <span aria-hidden="true">(the square with an arrow)</span>, then <b>Add to Home Screen</b>. Installing also helps your iPhone or iPad keep your entries.</p>
+            ) : (
+              <p className="text-sm text-muted">Open your browser menu and choose <b>Install app</b> or <b>Add to Home screen</b>.</p>
+            )}
+          </div>
+        </Card>
+      )}
+      <Card className="p-5 flex flex-col gap-2">
+        <p className="font-semibold flex items-center gap-2"><Ico name="lock" className="w-4 h-4 text-primary" /> Your data stays on this device</p>
+        <p className="text-sm text-muted">Your entries are encrypted and saved only in this browser on this device. MindShift can't see them or restore them. If you clear your browser data or switch devices, they won't come with you.</p>
+        {user && user.clerkId ? (
+          !confirm ? <button onClick={() => setConfirm(true)} className="self-start text-sm font-semibold text-danger hover:underline">Erase everything on this device</button> : (
+            <div className="flex flex-wrap items-center gap-3 rounded-xl bg-dangersoft/60 p-3">
+              <p className="text-sm font-semibold">This permanently deletes all your entries on this device.</p>
+              <Btn onClick={() => { setConfirm(false); onErase(); }}>Erase</Btn>
+              <button onClick={() => setConfirm(false)} className="text-sm font-semibold text-muted hover:underline">Cancel</button>
+            </div>
+          )
+        ) : <p className="text-xs text-muted">Test mode: entries aren't saved until you sign in with your account.</p>}
+      </Card>
+    </div>
+  );
+}
+
 /* ---------- App ---------- */
 function App() {
   const [view, setView] = useState("dashboard");
@@ -420,6 +538,63 @@ function App() {
   };
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), toast.lvl ? 3800 : 2800); return () => clearTimeout(t); }, [toast]);
 
+  /* ----- Save and restore this user's entries on this device ----- */
+  const [hydratedFor, setHydratedFor] = useState(null);
+  const [deferredInstall, setDeferredInstall] = useState(null);
+  useEffect(() => {
+    const onPrompt = (e) => { e.preventDefault(); setDeferredInstall(e); };
+    window.addEventListener("beforeinstallprompt", onPrompt);
+    return () => window.removeEventListener("beforeinstallprompt", onPrompt);
+  }, []);
+  const installApp = async () => { if (!deferredInstall) return false; deferredInstall.prompt(); const r = await deferredInstall.userChoice.catch(() => null); setDeferredInstall(null); return !!(r && r.outcome === "accepted"); };
+  const snapshot = { v: 1, client: { ...CLIENT }, logs, moodWeek, todayMood, notes, appt, watched, couples, groundingCount, sensateLogs, breathCount, breathPace, seen, bodyScans, ex, lib, worries, worryDone, sessionTopics, celebrate, pin };
+  const snapRef = useRef(snapshot); snapRef.current = snapshot;
+  const clerkUserId = user && user.clerkId;
+  useEffect(() => {
+    if (!clerkUserId) { setHydratedFor(null); vaultForget(); return; }
+    let on = true;
+    askPersistentStorage();
+    vaultLoad(clerkUserId).then((d) => {
+      if (!on) return;
+      if (d && d.v === 1) {
+        if (d.client) Object.assign(CLIENT, d.client);
+        if (d.logs) setLogs(d.logs); if (d.moodWeek) setMoodWeek(d.moodWeek); if ("todayMood" in d) setTodayMood(d.todayMood);
+        if (d.notes) setNotes(d.notes); if (d.appt) setAppt(d.appt); if (d.watched) setWatched(d.watched); if (d.couples) setCouples(d.couples);
+        if (typeof d.groundingCount === "number") setGroundingCount(d.groundingCount); if (d.sensateLogs) setSensateLogs(d.sensateLogs);
+        if (typeof d.breathCount === "number") setBreathCount(d.breathCount); if (d.breathPace) setBreathPace(d.breathPace);
+        if (d.seen) setSeen(d.seen); if (typeof d.bodyScans === "number") setBodyScans(d.bodyScans);
+        if (d.ex) setEx((e) => ({ ...e, ...d.ex })); if (d.lib) setLib((l) => ({ ...l, ...d.lib }));
+        if (d.worries) setWorries(d.worries); if (typeof d.worryDone === "boolean") setWorryDone(d.worryDone);
+        if (typeof d.sessionTopics === "string") setSessionTopics(d.sessionTopics); if (d.celebrate) setCelebrate(d.celebrate);
+        if (d.pin) { setPin(d.pin); if (!userRef.current || !userRef.current.freshSignIn) setLocked(true); }
+      }
+      setHydratedFor(clerkUserId);
+    });
+    return () => { on = false; };
+  }, [clerkUserId]);
+  const saveDeps = [logs, moodWeek, todayMood, notes, appt, watched, couples, groundingCount, sensateLogs, breathCount, breathPace, seen, bodyScans, ex, lib, worries, worryDone, sessionTopics, celebrate, pin];
+  useEffect(() => {
+    if (!hydratedFor || hydratedFor !== clerkUserId) return;
+    const t = setTimeout(() => vaultSave(hydratedFor, snapRef.current), 700);
+    return () => clearTimeout(t);
+  }, [hydratedFor, clerkUserId, ...saveDeps]);
+  useEffect(() => {
+    if (!hydratedFor) return;
+    const flush = () => { if (document.visibilityState === "hidden" && userRef.current && userRef.current.clerkId === hydratedFor) vaultSave(hydratedFor, snapRef.current); };
+    document.addEventListener("visibilitychange", flush);
+    window.addEventListener("pagehide", flush);
+    return () => { document.removeEventListener("visibilitychange", flush); window.removeEventListener("pagehide", flush); };
+  }, [hydratedFor]);
+  const eraseDevice = async () => {
+    const id = clerkUserId; if (!id) return;
+    setHydratedFor(null);
+    await vaultErase(id);
+    const u = userRef.current; userRef.current = null; setUser(null);
+    setTimeout(() => loginRef.current({ ...u, justCreated: false, freshSignIn: true }), 0);
+    setPin(null); setLocked(false);
+    say("Everything on this device was erased");
+  };
+
   const unread = notes.filter((n) => !n.read).length;
   const openResource = (id) => {
     setView("resources"); setOpenRes(id); setBellOpen(false);
@@ -442,7 +617,7 @@ function App() {
         setAppt({ confirmed: false, requested: null });
       }
     }
-    if (TEST_MODE && u.role === "client") { setPin("faceid"); setLocked(false); }
+    if (TEST_MODE && u.role === "client" && !u.clerkId) { setPin("faceid"); setLocked(false); }
     setUser(u); setView("dashboard"); setOpenRes(null); setOpenDoc(null); window.scrollTo(0, 0);
     if (u.clerkId) say(u.justCreated ? `Welcome, ${u.first}! Your account is ready.` : `Welcome back, ${u.first}`, u.justCreated ? "big" : undefined);
     else say(u.isNew ? `Welcome, ${u.first}! Your account is ready.` : `Signed in as ${u.name}`, u.isNew ? "big" : undefined);
@@ -506,6 +681,7 @@ function App() {
         <main className="flex-1 max-w-6xl w-full mx-auto px-4 md:px-8 pt-5 md:pt-7 pb-28 md:pb-12">
           <h1 className="md:hidden font-display text-2xl font-medium mb-4">{titles[view]}</h1>
           {view === "dashboard" && <Dashboard {...ctx} />}
+          {view === "dashboard" && <DeviceDataCard user={user} onErase={eraseDevice} deferredInstall={deferredInstall} onInstall={installApp} />}
           {view === "logs" && <TherapyLogs {...ctx} />}
           {view === "resources" && <Resources {...ctx} />}
           {view === "meditation" && <MeditationPage {...ctx} />}
@@ -531,7 +707,7 @@ function App() {
       )}
       {user && user.role !== "client" && <SessionTimeout onSignOut={signOut} />}
       {user && user.role === "client" && summaryOpen && <SessionSummary {...ctx} onClose={() => setSummaryOpen(false)} />}
-      {user && user.role === "client" && <AppLock pin={pin} setPin={setPin} locked={locked} setLocked={setLocked} signOut={signOut} openCrisis={() => setCrisisOpen(true)} />}
+      {user && user.role === "client" && (!user.clerkId || hydratedFor === user.clerkId) && <AppLock demo={!user.clerkId} pin={pin} setPin={setPin} locked={locked} setLocked={setLocked} signOut={signOut} openCrisis={() => setCrisisOpen(true)} />}
     </>
   );
 }
@@ -594,7 +770,7 @@ function Sidebar({ view, go, unread, say, onCrisis, signOut, onLock }) {
           <p className="mb-2">MindShift front desk · 8 AM–8 PM daily</p>
           <ContactButtons say={say} compact />
         </div>
-        <div className="flex items-center justify-between gap-2"><Pill className="bg-surface2 text-muted">Prototype · sample data</Pill><span className="flex gap-3"><button onClick={onLock} className="text-sm font-semibold text-primary hover:underline">Lock</button><button onClick={() => signOut("manual")} className="text-sm font-semibold text-primary hover:underline">Sign out</button></span></div>
+        <div className="flex items-center justify-between gap-2"><Pill className="bg-surface2 text-muted"><Ico name="lock" className="w-3 h-3 inline -mt-0.5 mr-1" />Saved on this device</Pill><span className="flex gap-3"><button onClick={onLock} className="text-sm font-semibold text-primary hover:underline">Lock</button><button onClick={() => signOut("manual")} className="text-sm font-semibold text-primary hover:underline">Sign out</button></span></div>
       </div>
     </aside>
   );
@@ -3369,7 +3545,8 @@ function userFromClerk(cu) {
   const name = role === "client" ? `${first}${last ? ` ${last[0].toUpperCase()}.` : ""}` : (cu.fullName || email);
   const justCreated = cu.createdAt ? Date.now() - new Date(cu.createdAt).getTime() < 10 * 60 * 1000 : false;
   const meta = cu.unsafeMetadata || {};
-  return { role, name, first, last, email, isNew: true, justCreated, clinician: meta.clinician || null, clerkId: cu.id };
+  const freshSignIn = cu.lastSignInAt ? Date.now() - new Date(cu.lastSignInAt).getTime() < 2 * 60 * 1000 : true;
+  return { role, name, first, last, email, isNew: true, justCreated, freshSignIn, clinician: meta.clinician || null, clerkId: cu.id };
 }
 function ClerkMount({ clerk, kind, extra }) {
   const ref = useRef(null);
@@ -3752,7 +3929,7 @@ function PinPad({ title, sub, onDone, error, tone = "dark" }) {
   );
 }
 
-function AppLock({ pin, setPin, locked, setLocked, signOut, openCrisis }) {
+function AppLock({ pin, setPin, locked, setLocked, signOut, openCrisis, demo = true }) {
   const [first, setFirst] = useState(null);
   const [err, setErr] = useState("");
   useEffect(() => {
@@ -3778,15 +3955,15 @@ function AppLock({ pin, setPin, locked, setLocked, signOut, openCrisis }) {
     <>
       <p className="text-sm opacity-85 max-w-sm text-center">Your journals, logs, and check-ins are saved only on this device. Add a passcode so no one else who picks up your phone can open them.</p>
       {first === null
-        ? <PinPad title="Create a 4-digit passcode" onDone={(v) => { setFirst(v); setErr(""); }} error={err} />
-        : <PinPad title="Confirm your passcode" onDone={(v) => { if (v === first) { setPin(v); setLocked(false); } else { setErr("Those didn't match. Try again."); setFirst(null); } }} error={err} />}
-      <button onClick={() => { setPin("faceid"); setLocked(false); }} className="text-sm font-semibold underline underline-offset-4">Use Face ID instead (demo)</button>
+        ? <PinPad key="create" title="Create a 4-digit passcode" onDone={(v) => { setFirst(v); setErr(""); }} error={err} />
+        : <PinPad key="confirm" title="Confirm your passcode" onDone={(v) => { if (v === first) { setPin(v); setLocked(false); } else { setErr("Those didn't match. Try again."); setFirst(null); } }} error={err} />}
+      {demo && <button onClick={() => { setPin("faceid"); setLocked(false); }} className="text-sm font-semibold underline underline-offset-4">Use Face ID instead (demo)</button>}
     </>
   );
   return shell(
     <>
-      <PinPad title="Enter your passcode" sub={`Locked after ${LOCK_IDLE_MIN} minutes of inactivity`} onDone={(v) => { if (pin === "faceid" || v === pin) { setLocked(false); setErr(""); } else setErr("Wrong passcode. Try again."); }} error={err} />
-      <button onClick={() => { setLocked(false); setErr(""); }} className="text-sm font-semibold underline underline-offset-4">Unlock with Face ID (demo)</button>
+      <PinPad title="Enter your passcode" sub={`Locked after ${LOCK_IDLE_MIN} minutes of inactivity`} onDone={(v) => { if ((demo && pin === "faceid") || v === pin) { setLocked(false); setErr(""); } else setErr("Wrong passcode. Try again."); }} error={err} />
+      {(demo || pin === "faceid") && <button onClick={() => { setLocked(false); setErr(""); }} className="text-sm font-semibold underline underline-offset-4">Unlock with Face ID (demo)</button>}
       <button onClick={() => signOut("manual")} className="text-xs opacity-75 hover:opacity-100">Forgot your passcode? Sign out and sign back in to reset it.</button>
     </>
   );
