@@ -3020,7 +3020,7 @@ function CouplesSplit({ say, put }) {
 }
 
 /* ---------- Couples Communication Workshop (paid) ---------- */
-const CHECKOUT_URL = ""; // Paste your Payhip or Lemon Squeezy product link here to take real payments.
+const CHECKOUT_URL = "https://payhip.com/b/SPmlw"; // Payhip product page for the Couples Communication Workshop.
 const WORKSHOP = {
   title: "The Couples Communication Workshop", sub: "Five phases to deeper connection, from everyday conversation to lasting intimacy",
   price: "$20", cover: "covers/workshop.jpg",
@@ -3083,7 +3083,7 @@ function BuyWorkshop({ onClose, onPurchased }) {
             <p className="text-muted text-xs mt-1">Once the store is set up, this button opens its secure checkout, and the PDF is emailed after payment.</p>
           </div>
         )}
-        <button onClick={onPurchased} className="text-sm font-semibold text-primary hover:underline">Demo: simulate a completed purchase</button>
+        {!CHECKOUT_URL && <button onClick={onPurchased} className="text-sm font-semibold text-primary hover:underline">Demo: simulate a completed purchase</button>}
         <p className="text-[11px] text-muted leading-relaxed">Payment is processed by our store provider. MindShift never sees your card details. Anyone can buy, client or not. Purchasing is optional and never affects anyone’s care.</p>
       </div>
     </div>
