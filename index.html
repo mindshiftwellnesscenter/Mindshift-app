@@ -343,6 +343,7 @@ function App() {
         setAppt({ confirmed: false, requested: null });
       }
     }
+    if (TEST_MODE && u.role === "client") { setPin("faceid"); setLocked(false); }
     setUser(u); setView("dashboard"); setOpenRes(null); setOpenDoc(null); window.scrollTo(0, 0);
     say(u.isNew ? `Welcome, ${u.first}! Your account is ready.` : `Signed in as ${u.name}`, u.isNew ? "big" : undefined);
   };
@@ -3109,6 +3110,11 @@ function WorkshopStoreCard({ lib, setLib, go, setOpenDoc, say }) {
 }
 
 /* ---------- Sign-in, session timeout, staff portal ---------- */
+// TEST MODE: set to false before real clients use the app.
+// When true, any email + Continue on the Client tab goes straight to the client dashboard
+// (no password check, no verification code, no passcode setup).
+const TEST_MODE = true;
+
 const DEMO_USERS = {
   client: { role: "client", name: "Jordan R.", email: "jordan.r@example.com" },
   clinician: { role: "clinician", name: "Elaine Stahlhofen, LMFT", email: "e.stahlhofen@mindshiftwellnesscenter.com" },
@@ -3278,6 +3284,7 @@ function LoginScreen({ onLogin }) {
   const fill = (k) => { const u = DEMO_USERS[k]; setTab(k === "client" ? "client" : "staff"); setEmail(u.email); setPw("demo-password"); setErr(""); };
   const submit = (e) => {
     e.preventDefault();
+    if (TEST_MODE && tab === "client") { if (!email.trim()) { setErr("Type any email to continue."); return; } onLogin({ ...DEMO_USERS.client, email: email.trim() }); return; }
     if (!email.includes("@") || pw.length < 6) { setErr("Enter your email and password. Passwords are at least 6 characters in this demo."); return; }
     let u = Object.values(DEMO_USERS).find((x) => x.email === email.trim().toLowerCase());
     if (tab === "staff" && !email.toLowerCase().endsWith("@mindshiftwellnesscenter.com")) { setErr("Staff sign in with a MindShift work email."); return; }
@@ -3315,6 +3322,7 @@ function LoginScreen({ onLogin }) {
       <div className="px-4 py-10 md:px-12 flex items-center justify-center" style={{ background: "#FFFFFF" }}>
         <div className="w-full max-w-sm flex flex-col gap-5">
           <div className="rounded-xl px-3.5 py-2.5 text-xs" style={{ background: "#FFF6E5", border: "1px solid #F2D49B", color: "#5C4413" }}><b>Prototype.</b> Don't enter real names, passwords, or health information. Sign-in is simulated.</div>
+          {TEST_MODE && <div className="rounded-xl px-3.5 py-2.5 text-xs font-semibold" style={{ background: "#FDECEA", border: "1px solid #F5B5AE", color: "#8A1C12" }}>Test mode is on: type any email and tap Continue to open the client dashboard. Turn off before launch.</div>}
           {mode === "signup" ? <SignupForm onDone={onLogin} onCancel={() => setMode("signin")} /> : step === "creds" ? (
             <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
               <h1 className="text-4xl font-semibold" style={{ fontFamily: '"Zilla Slab", Rockwell, Georgia, serif' }}>Welcome back</h1>
