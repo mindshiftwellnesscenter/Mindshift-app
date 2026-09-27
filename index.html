@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="description" content="MindShift Clinical Companion: a between-session companion app from MindShift Psychological Services.">
 <meta name="robots" content="noindex, nofollow">
-<link rel="icon" type="image/png" href="covers/mindshift-logo.png">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 64 64%27%3E%3Crect width=%2764%27 height=%2764%27 rx=%2714%27 fill=%27%2327963C%27/%3E%3Cpath d=%27M32 50C22 40 22 24 32 12C42 24 42 40 32 50Z%27 fill=%27%2380CC28%27/%3E%3Cpath d=%27M32 50C24 46 14 38 12 26C24 26 30 36 32 50Z%27 fill=%27%2300ADEF%27/%3E%3Cpath d=%27M32 50C40 46 50 38 52 26C40 26 34 36 32 50Z%27 fill=%27%2300ADEF%27/%3E%3C/svg%3E">
 <style>
   :root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
   body { margin: 0; }
@@ -267,6 +267,93 @@ function fireConfetti(level) {
       window.confetti({ ...base, particleCount: 40, spread: 60, origin: { x: 0.5, y: 0.9 }, startVelocity: 35, scalar: 0.8 });
     }
   } catch (e) {}
+}
+
+/* ---------- Covers and logo drawn in code (no image files) ---------- */
+const COVER_THEMES = {
+  calm: { bg: "linear-gradient(155deg, #0B3F5C 0%, #136F86 42%, #3FA7A3 72%, #A6DCD2 100%)", accent: "#CFF1EA", motif: "ripple" },
+  bloom: { bg: "linear-gradient(160deg, #4E6E55 0%, #7E9A72 45%, #B9B27A 75%, #E4C77E 100%)", accent: "#F7E9C0", motif: "petals" },
+  bloom2: { bg: "linear-gradient(160deg, #5B7A63 0%, #93AA86 45%, #CDBE86 78%, #EBD39A 100%)", accent: "#FAEFD0", motif: "petals" },
+  mirage: { bg: "linear-gradient(160deg, #2A1330 0%, #542448 40%, #88406E 72%, #C98AA6 100%)", accent: "#F4CFDD", motif: "mirror" },
+  workshop: { bg: "linear-gradient(160deg, #2E3378 0%, #5A58B5 45%, #8E8FDB 72%, #BFD6F5 100%)", accent: "#E3E7FF", motif: "pair" },
+  anxiety: { bg: "linear-gradient(160deg, #0F4A5A 0%, #1F7B83 50%, #7CC7BD 100%)", accent: "#D6F3EE", motif: "ripple" },
+  start: { bg: "linear-gradient(160deg, #1B2F55 0%, #2F5A8C 50%, #8BB4DA 100%)", accent: "#DCEBFA", motif: "path" },
+  wellness: { bg: "linear-gradient(160deg, #7A3E1F 0%, #C06A34 50%, #F0B66E 100%)", accent: "#FFE7C7", motif: "sun" },
+  mindful: { bg: "linear-gradient(160deg, #3E5A4A 0%, #6F8F7A 50%, #C6B8E4 100%)", accent: "#EEE8FB", motif: "ripple" },
+};
+const COVERS = {
+  ebook: { title: "Calm Within", sub: "A Practical Guide to Managing Anxiety", by: "MindShift Psychological Services", theme: "calm" },
+  binge: { title: "The Mindful Bloom Journal", sub: "For Binge Eating & Overeating Recovery", by: "Rachael Morua, LMFT, CST", theme: "bloom" },
+  restrictive: { title: "The Mindful Bloom Journal", sub: "For Restrictive Eating & Anorexia Recovery", by: "Rachael Morua, LMFT, CST", theme: "bloom2" },
+  mirage: { title: "Mirage in the Mirror", sub: "Finding Your Best Self", by: "Rachael Montgomery Morua", theme: "mirage" },
+  workshop: { title: "The Couples Communication Workshop", sub: "Five phases to deeper connection", by: "MindShift Psychological Services", theme: "workshop" },
+};
+const GUIDE_THEME = { Anxiety: "anxiety", "Getting Started": "start", Wellness: "wellness", Mindfulness: "mindful" };
+const guideCover = (g) => ({ title: g.title, sub: g.sub, by: "A MindShift Guide", theme: GUIDE_THEME[g.tag] || "start" });
+
+function CoverMotif({ kind, accent, small }) {
+  const a = accent;
+  if (kind === "ripple") return (
+    <div className="absolute left-1/2 -translate-x-1/2" style={{ top: "38%" }} aria-hidden="true">
+      {[1, 0.72, 0.46, 0.22].map((s, i) => <span key={i} className="absolute rounded-full" style={{ width: `${s * (small ? 46 : 150)}px`, height: `${s * (small ? 46 : 150)}px`, left: `${-(s * (small ? 46 : 150)) / 2}px`, top: `${-(s * (small ? 46 : 150)) / 2}px`, border: `1.5px solid ${a}`, opacity: 0.35 + i * 0.15, background: i === 3 ? a : "transparent" }} />)}
+    </div>
+  );
+  if (kind === "petals") return (
+    <div className="absolute left-1/2" style={{ top: "40%" }} aria-hidden="true">
+      {[-60, -30, 0, 30, 60].map((r, i) => <span key={i} className="absolute" style={{ width: small ? 12 : 40, height: small ? 26 : 86, left: small ? -6 : -20, top: small ? -26 : -86, borderRadius: "50% 50% 50% 50% / 60% 60% 40% 40%", transformOrigin: "50% 100%", transform: `rotate(${r}deg)`, background: a, opacity: i === 2 ? 0.75 : 0.45 }} />)}
+    </div>
+  );
+  if (kind === "mirror") return (
+    <div className="absolute left-1/2 -translate-x-1/2" style={{ top: "26%", width: small ? 26 : 92, height: small ? 38 : 136, borderRadius: small ? "13px 13px 4px 4px" : "46px 46px 10px 10px", border: `${small ? 2 : 3}px solid ${a}`, background: "linear-gradient(180deg, rgba(255,255,255,.28), rgba(255,255,255,.04))", boxShadow: `0 0 ${small ? 8 : 30}px rgba(255,255,255,.15)` }} aria-hidden="true">
+      <span className="absolute rounded-full" style={{ width: small ? 8 : 26, height: small ? 8 : 26, left: "50%", top: "30%", transform: "translateX(-50%)", background: a, opacity: 0.6 }} />
+    </div>
+  );
+  if (kind === "pair") return (
+    <div className="absolute left-1/2" style={{ top: "40%" }} aria-hidden="true">
+      <span className="absolute rounded-full" style={{ width: small ? 26 : 90, height: small ? 26 : 90, left: small ? -22 : -74, top: small ? -13 : -45, background: "#B9A4F0", opacity: 0.7 }} />
+      <span className="absolute rounded-full" style={{ width: small ? 26 : 90, height: small ? 26 : 90, left: small ? -4 : -16, top: small ? -13 : -45, background: "#8FC2FF", opacity: 0.7 }} />
+    </div>
+  );
+  if (kind === "sun") return <span className="absolute left-1/2 -translate-x-1/2 rounded-full" style={{ top: "26%", width: small ? 28 : 96, height: small ? 28 : 96, background: `radial-gradient(circle, ${a} 0%, rgba(255,255,255,0) 70%)` }} aria-hidden="true" />;
+  return <span className="absolute left-[18%] right-[18%]" style={{ top: "40%", height: small ? 2 : 3, background: a, opacity: 0.6, borderRadius: 2 }} aria-hidden="true" />;
+}
+
+function BookCover({ title, sub, by, theme = "start", size = "md", className = "", style = {} }) {
+  const t = COVER_THEMES[theme] || COVER_THEMES.start;
+  const sm = size === "sm";
+  return (
+    <div role="img" aria-label={`${title}${sub ? `: ${sub}` : ""} cover`} className={`relative overflow-hidden text-white select-none ${sm ? "rounded" : "rounded-md"} ${className}`} style={{ aspectRatio: "425 / 550", background: t.bg, boxShadow: sm ? "0 4px 10px rgba(0,0,0,.18)" : "0 18px 40px rgba(20,20,40,.28)", ...style }}>
+      <span className="absolute inset-y-0 left-0" style={{ width: sm ? 3 : 10, background: "linear-gradient(90deg, rgba(0,0,0,.25), rgba(0,0,0,0))" }} aria-hidden="true" />
+      <span className="absolute inset-0" style={{ background: "radial-gradient(120% 60% at 80% 0%, rgba(255,255,255,.22), rgba(255,255,255,0) 60%)" }} aria-hidden="true" />
+      <CoverMotif kind={t.motif} accent={t.accent} small={sm} />
+      <div className={`absolute inset-0 flex flex-col justify-between ${sm ? "p-1.5" : "p-5"}`}>
+        {!sm && <p className="text-[9px] font-semibold tracking-[.2em] uppercase opacity-80 text-center">{by}</p>}
+        <div className="text-center" style={{ marginTop: sm ? "auto" : 0 }}>
+          <p className="font-semibold leading-[1.05]" style={{ fontFamily: '"Zilla Slab", "Newsreader", Georgia, serif', fontSize: sm ? 8 : title.length > 22 ? 22 : 30, textShadow: "0 1px 8px rgba(0,0,0,.25)" }}>{title}</p>
+          {!sm && sub && <p className="mt-2 text-[11px] leading-snug italic opacity-90" style={{ fontFamily: '"Newsreader", Georgia, serif' }}>{sub}</p>}
+        </div>
+        {!sm && <span className="mx-auto h-px w-10" style={{ background: t.accent, opacity: 0.8 }} aria-hidden="true" />}
+      </div>
+    </div>
+  );
+}
+
+function MindShiftLogo({ className = "", inkColor = "#231F20" }) {
+  const petals = [[-64, "#00ADEF"], [-32, "#80CC28"], [0, "#27963C"], [32, "#80CC28"], [64, "#00ADEF"]];
+  return (
+    <div role="img" aria-label="MindShift Psychological Services" className={`flex flex-col items-center ${className}`}>
+      <svg viewBox="0 0 200 92" className="w-[46%]" aria-hidden="true">
+        {petals.map(([r, c], i) => (
+          <g key={i} transform={`rotate(${r} 100 88)`}>
+            <path d="M100 88 C 84 64, 86 30, 100 8 C 114 30, 116 64, 100 88 Z" fill={c} opacity={i === 2 ? 1 : 0.9} />
+            <path d="M100 80 C 93 62, 94 38, 100 22 C 106 38, 107 62, 100 80 Z" fill="#FFFFFF" opacity="0.35" />
+          </g>
+        ))}
+      </svg>
+      <p className="leading-none mt-1" style={{ fontFamily: '"Zilla Slab", Rockwell, Georgia, serif', fontWeight: 600, fontSize: "clamp(36px, 7vw, 64px)", letterSpacing: "-.01em" }}><span style={{ color: inkColor }}>Mind</span><span style={{ color: "#6CBF2A" }}>Shift</span></p>
+      <p className="mt-1 uppercase" style={{ fontFamily: '"Zilla Slab", Rockwell, Georgia, serif', color: "#8A8F8C", letterSpacing: ".28em", fontSize: "clamp(10px, 1.6vw, 14px)" }}>Psychological Services</p>
+    </div>
+  );
 }
 
 /* ---------- App ---------- */
@@ -2126,7 +2213,7 @@ function Library(p) {
       <p className="text-muted max-w-2xl">Guides and journals written by MindShift clinicians. Read and write in them here, or open the original PDF.</p>
       {lib.workshopOwned && (
         <Card className="p-4 flex flex-wrap gap-4 items-center border-sage/50">
-          <img src={WORKSHOP.cover} alt="" className="w-16 rounded shadow" />
+          <BookCover {...COVERS.workshop} size="sm" className="w-16 shrink-0" />
           <div className="flex-1 min-w-[180px]"><Pill className="bg-sage text-white mb-1">Purchased</Pill><p className="font-semibold">{WORKSHOP.title}</p><p className="text-xs text-muted tnum">{Object.values((lib.workshop || { done: {} }).done).filter(Boolean).length} of {WORKSHOP.phases.reduce((n, x) => n + x.sections.length, 0)} sections complete</p></div>
           <Btn onClick={() => setOpenDoc("workshop")}>Continue workshop</Btn>
         </Card>
@@ -2135,7 +2222,7 @@ function Library(p) {
         {items.map((it) => (
           <Card key={it.id} className="overflow-hidden flex flex-col">
             <button onClick={() => setOpenDoc(it.id)} className="block bg-surface2 p-5 pb-0 group" aria-label={`${it.cta}: ${it.title}`}>
-              <img src={it.cover} alt={`Cover of ${it.title}`} className="w-full max-w-[220px] mx-auto rounded-t-md shadow-lg group-hover:-translate-y-1 transition" style={{ aspectRatio: "425 / 550", objectFit: "cover", objectPosition: "top" }} />
+              <BookCover {...COVERS[it.id]} className="w-full max-w-[220px] mx-auto group-hover:-translate-y-1 transition" />
             </button>
             <div className="p-5 flex flex-col gap-2 flex-1">
               <div className="flex items-center gap-2"><Pill className="bg-primary/10 text-primary">{it.kind}</Pill><Pill className={it.tag === "Anxiety" ? "bg-sagesoft text-sage" : "bg-claysoft text-clay"}>{it.tag}</Pill></div>
@@ -2162,7 +2249,7 @@ function Library(p) {
           return (
             <Card key={g.id} className="p-4 flex gap-4 items-center">
               <button onClick={() => setOpenDoc(g.id)} className="shrink-0" aria-label={`Open ${g.title}`}>
-                <img src={g.cover} alt="" className="w-16 rounded shadow hover:-translate-y-0.5 transition" style={{ aspectRatio: "425 / 550", objectFit: "cover", objectPosition: "top" }} />
+                <BookCover {...guideCover(g)} size="sm" className="w-16 hover:-translate-y-0.5 transition" />
               </button>
               <div className="flex-1 min-w-0 flex flex-col gap-1">
                 <div className="flex items-center gap-2"><Pill className={g.tag === "Anxiety" ? "bg-sagesoft text-sage" : g.tag === "Mindfulness" ? "bg-sagesoft text-sage" : g.tag === "Wellness" ? "bg-claysoft text-clay" : "bg-primary/10 text-primary"}>{g.tag}</Pill><span className="text-xs text-muted">7 pages</span></div>
@@ -2433,7 +2520,7 @@ function Store({ go, setOpenDoc, say, lib, setLib }) {
       <Card className="overflow-hidden">
         <div className="grid md:grid-cols-[minmax(0,300px)_1fr]">
           <div className="bg-surface2 p-6 md:p-8 grid place-items-center">
-            <img src="covers/mirage.jpg" alt="Mirage in the Mirror: Finding Your Best Self, by Rachael Montgomery Morua. Cover shows a green armchair reflected in an ornate red mirror against black and white striped walls." className="w-full max-w-[240px] rounded-md shadow-xl" style={{ aspectRatio: "600 / 919", objectFit: "cover" }} />
+            <BookCover {...COVERS.mirage} className="w-full max-w-[240px]" />
                     </div>
           <div className="p-6 md:p-8 flex flex-col gap-4">
             <div className="flex flex-wrap gap-2"><Pill className="bg-claysoft text-clay">Book</Pill><Pill className="bg-primary/10 text-primary">By a MindShift clinician</Pill></div>
@@ -2474,7 +2561,7 @@ function Store({ go, setOpenDoc, say, lib, setLib }) {
         <div className="grid sm:grid-cols-3 gap-4">
           {free.map((it) => (
             <Card key={it.id} className="p-4 flex gap-4 items-center">
-              <img src={it.cover} alt="" className="w-16 rounded shadow" style={{ aspectRatio: "425 / 550", objectFit: "cover", objectPosition: "top" }} />
+              <BookCover {...COVERS[it.id]} size="sm" className="w-16 shrink-0" />
               <div className="flex-1 min-w-0">
                 <p className="font-semibold leading-snug">{it.t}</p>
                 <p className="text-xs text-muted">{it.s}</p>
@@ -2955,7 +3042,7 @@ function BuyWorkshop({ onClose, onPurchased }) {
       <div className="bg-surface w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-6 fade-in flex flex-col gap-4" onClick={(e) => e.stopPropagation()} style={{ paddingBottom: "calc(24px + env(safe-area-inset-bottom, 0px))" }}>
         <div className="flex items-center justify-between"><h2 className="font-display text-2xl">Checkout</h2><button onClick={onClose} aria-label="Close" className="w-9 h-9 rounded-full grid place-items-center hover:bg-surface2"><Ico name="x" /></button></div>
         <div className="flex gap-4 items-center rounded-2xl bg-surface2 p-3">
-          <img src={WORKSHOP.cover} alt="" className="w-14 rounded shadow" />
+          <BookCover {...COVERS.workshop} size="sm" className="w-14 shrink-0" />
           <div className="flex-1"><p className="font-semibold leading-snug">{WORKSHOP.title}</p><p className="text-xs text-muted">28-page PDF + guided in-app version</p></div>
           <p className="font-display text-2xl tnum">{WORKSHOP.price}</p>
         </div>
@@ -3071,7 +3158,7 @@ function WorkshopStoreCard({ lib, setLib, go, setOpenDoc, say }) {
     <Card className="overflow-hidden">
       <div className="grid md:grid-cols-[minmax(0,300px)_1fr]">
         <div className="bg-surface2 p-6 md:p-8 grid place-items-center">
-          <img src={WORKSHOP.cover} alt="The Couples Communication Workshop cover" className="w-full max-w-[240px] rounded-md shadow-xl" style={{ aspectRatio: "600 / 777" }} />
+          <BookCover {...COVERS.workshop} className="w-full max-w-[240px]" />
         </div>
         <div className="p-6 md:p-8 flex flex-col gap-4">
           <div className="flex flex-wrap gap-2"><Pill className="bg-claysoft text-clay">Couples workshop</Pill><Pill className="bg-primary/10 text-primary">5 phases · {total} sections</Pill><Pill className="bg-surface2 text-muted">28-page PDF + in-app</Pill><Pill className="bg-surface2 text-muted">Instant download · All sales final</Pill></div>
@@ -3306,7 +3393,7 @@ function LoginScreen({ onLogin }) {
         <div className="absolute -left-16 top-1/3 w-56 h-56 rounded-full opacity-[.08]" style={{ background: SKY }} aria-hidden="true" />
         <div className="relative flex items-center gap-3"><span className="text-[11px] font-bold tracking-[.18em] uppercase" style={{ color: G }}>Clinical Companion</span></div>
         <div className="relative flex flex-col items-center lg:items-start gap-8">
-          <img src="covers/mindshift-logo.png" alt="MindShift Psychological Services" className="w-full max-w-[380px]" />
+          <MindShiftLogo className="w-full max-w-[380px]" />
           <div className="max-w-md">
             <p className="text-3xl md:text-4xl leading-tight font-semibold" style={{ fontFamily: '"Zilla Slab", Rockwell, Georgia, serif', color: INKB }}>A safe place to work through life's <span style={{ color: G }}>challenges.</span></p>
             <ul className="mt-6 flex flex-col gap-3 text-sm" style={{ color: "#3F4A3D" }}>
