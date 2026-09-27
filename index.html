@@ -97,6 +97,9 @@
 <script src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.24.7/babel.min.js"></script>
+<!-- Clerk: real sign-in and sign-up -->
+<script defer crossorigin="anonymous" src="https://assured-cobra-233.clerk.accounts.dev/npm/@clerk/ui@1/dist/ui.browser.js" type="text/javascript"></script>
+<script id="clerk-js" defer crossorigin="anonymous" data-clerk-publishable-key="pk_test_YXNzdXJlZC1jb2JyYS0yMzMuY2xlcmsuYWNjb3VudHMuZGV2JA" src="https://assured-cobra-233.clerk.accounts.dev/npm/@clerk/clerk-js@6/dist/clerk.browser.js" type="text/javascript"></script>
 </head>
 <body>
 <div id="root"></div>
@@ -368,6 +371,9 @@ function App() {
   const [audit, setAudit] = useState(SAMPLE_AUDIT);
   const [pin, setPin] = useState(null);
   const [locked, setLocked] = useState(false);
+  const clerk = useClerk();
+  const userRef = useRef(null); userRef.current = user;
+  const loginRef = useRef(null); const signOutRef = useRef(null);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [sessionTopics, setSessionTopics] = useState("The presentation worry that keeps coming back");
 
@@ -432,9 +438,23 @@ function App() {
     }
     if (TEST_MODE && u.role === "client") { setPin("faceid"); setLocked(false); }
     setUser(u); setView("dashboard"); setOpenRes(null); setOpenDoc(null); window.scrollTo(0, 0);
-    say(u.isNew ? `Welcome, ${u.first}! Your account is ready.` : `Signed in as ${u.name}`, u.isNew ? "big" : undefined);
+    if (u.clerkId) say(u.justCreated ? `Welcome, ${u.first}! Your account is ready.` : `Welcome back, ${u.first}`, u.justCreated ? "big" : undefined);
+    else say(u.isNew ? `Welcome, ${u.first}! Your account is ready.` : `Signed in as ${u.name}`, u.isNew ? "big" : undefined);
   };
-  const signOut = (why) => { setUser(null); setPin(null); setLocked(false); setSummaryOpen(false); setCrisisOpen(false); setBellOpen(false); window.scrollTo(0, 0); setToast({ msg: why === "timeout" ? "Signed out after 15 minutes of inactivity" : "You've been signed out", k: Date.now() }); };
+  loginRef.current = login;
+  const signOut = (why) => { const was = userRef.current; userRef.current = null; if (was && was.clerkId && window.Clerk && window.Clerk.signOut) window.Clerk.signOut().catch(() => {}); setUser(null); setPin(null); setLocked(false); setSummaryOpen(false); setCrisisOpen(false); setBellOpen(false); window.scrollTo(0, 0); setToast({ msg: why === "timeout" ? "Signed out after 15 minutes of inactivity" : "You've been signed out", k: Date.now() }); };
+  signOutRef.current = signOut;
+  useEffect(() => {
+    if (!clerk) return;
+    const handle = (r) => {
+      const cu = r && r.user, cur = userRef.current;
+      if (cu && (!cur || cur.clerkId !== cu.id)) loginRef.current(userFromClerk(cu));
+      else if (!cu && cur && cur.clerkId) { userRef.current = null; signOutRef.current("manual"); }
+    };
+    const off = clerk.addListener(handle);
+    handle({ user: clerk.user });
+    return () => { if (typeof off === "function") off(); };
+  }, [clerk]);
   const ctx = {
     user, signOut, messages, setMessages, audit, logAccess, sessionTopics, setSessionTopics, openSummary: () => setSummaryOpen(true), lockApp: () => setLocked(true),
     go, say, openResource, logs, setLogs, moodWeek, setMoodWeek, todayMood, setTodayMood, notes, setNotes, appt, setAppt,
@@ -445,7 +465,7 @@ function App() {
 
   return (
     <>
-    {!user ? <LoginScreen onLogin={login} /> : user.role !== "client" ? <StaffPortal {...ctx} /> : (
+    {!user ? <LoginScreen onLogin={login} clerk={clerk} /> : user.role !== "client" ? <StaffPortal {...ctx} /> : (
     <div className="md:flex min-h-full">
       <Sidebar view={view} go={go} unread={unread} say={say} onCrisis={() => setCrisisOpen(true)} signOut={signOut} onLock={() => setLocked(true)} />
       <div className="flex-1 min-w-0 flex flex-col">
@@ -3196,6 +3216,61 @@ function WorkshopStoreCard({ lib, setLib, go, setOpenDoc, say }) {
   );
 }
 
+/* ---------- Clerk sign-in (real accounts) ---------- */
+// Publishable key from the Clerk dashboard (safe to be public). Never put the secret key (sk_...) here.
+const CLERK_KEY = "pk_test_YXNzdXJlZC1jb2JyYS0yMzMuY2xlcmsuYWNjb3VudHMuZGV2JA";
+const CLERK_APPEARANCE = {
+  variables: { colorPrimary: "#27963C", colorText: "#231F20", fontFamily: "Figtree, system-ui, sans-serif", borderRadius: "0.75rem" },
+  elements: { rootBox: { width: "100%" }, cardBox: { width: "100%", boxShadow: "none", border: "1px solid #E6ECE2" }, footerAction: { display: "none" } },
+};
+let clerkPromise = null;
+function loadClerk() {
+  if (clerkPromise) return clerkPromise;
+  clerkPromise = new Promise((resolve) => {
+    if (!CLERK_KEY || !document.getElementById("clerk-js")) return resolve(null);
+    const start = Date.now();
+    const tick = async () => {
+      const C = window.Clerk;
+      if (C && typeof C.load === "function" && (window.__internal_ClerkUICtor || Date.now() - start > 4000)) {
+        try {
+          await C.load({ ...(window.__internal_ClerkUICtor ? { ui: { ClerkUI: window.__internal_ClerkUICtor } } : {}), appearance: CLERK_APPEARANCE });
+          resolve(C);
+        } catch (e) { console.error("Clerk failed to load", e); resolve(null); }
+      } else if (Date.now() - start > 10000) resolve(null);
+      else setTimeout(tick, 150);
+    };
+    tick();
+  });
+  return clerkPromise;
+}
+function useClerk() {
+  const [state, setState] = useState(undefined); // undefined = loading, null = unavailable
+  useEffect(() => { let on = true; loadClerk().then((c) => on && setState(c)); return () => { on = false; }; }, []);
+  return state;
+}
+const STAFF_ROLES = ["clinician", "frontdesk"];
+function userFromClerk(cu) {
+  const role = STAFF_ROLES.includes(cu.publicMetadata && cu.publicMetadata.role) ? cu.publicMetadata.role : "client";
+  const email = (cu.primaryEmailAddress && cu.primaryEmailAddress.emailAddress) || "";
+  const first = cu.firstName || email.split("@")[0] || "there";
+  const last = cu.lastName || "";
+  const name = role === "client" ? `${first}${last ? ` ${last[0].toUpperCase()}.` : ""}` : (cu.fullName || email);
+  const justCreated = cu.createdAt ? Date.now() - new Date(cu.createdAt).getTime() < 10 * 60 * 1000 : false;
+  const meta = cu.unsafeMetadata || {};
+  return { role, name, first, last, email, isNew: true, justCreated, clinician: meta.clinician || null, clerkId: cu.id };
+}
+function ClerkMount({ clerk, kind, extra }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current; if (!clerk || !el) return;
+    const back = window.location.origin + window.location.pathname;
+    const props = { routing: "hash", forceRedirectUrl: back, fallbackRedirectUrl: back, ...(extra || {}) };
+    if (kind === "signup") clerk.mountSignUp(el, props); else clerk.mountSignIn(el, props);
+    return () => { try { if (kind === "signup") clerk.unmountSignUp(el); else clerk.unmountSignIn(el); } catch (e) {} };
+  }, [clerk, kind]);
+  return <div ref={ref} className="w-full min-h-[320px]" />;
+}
+
 /* ---------- Sign-in, session timeout, staff portal ---------- */
 // TEST MODE: set to false before real clients use the app.
 // When true, any email + Continue on the Client tab goes straight to the client dashboard
@@ -3278,7 +3353,7 @@ function LegalModal({ which, onClose, onAccept }) {
   );
 }
 
-function SignupForm({ onDone, onCancel }) {
+function SignupForm({ onDone, onCancel, clerk }) {
   const [legal, setLegal] = useState(null);
   const [read, setRead] = useState({ terms: false, npp: false });
   const G = "#27963C", LINK = "#0B6FA0", INKB = "#231F20", MUT = "#5A6358";
@@ -3289,6 +3364,12 @@ function SignupForm({ onDone, onCancel }) {
   const set = (k, v) => setF({ ...f, [k]: v });
   const submit = (e) => {
     e.preventDefault();
+    if (clerk) {
+      if (!f.adult) return setErr("You need to be 18 or older to create your own account.");
+      if (!read.terms || !read.npp) return setErr("Please open and read both the Terms of Use and the Notice of Privacy Practices.");
+      if (!f.notEmergency || !f.terms) return setErr("Please check both boxes to continue.");
+      setErr(""); setStep("clerk"); return;
+    }
     if (!f.first.trim()) return setErr("Enter your first name.");
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.trim())) return setErr("Enter a valid email address.");
     if (f.email.trim().toLowerCase().endsWith("@mindshiftwellnesscenter.com")) return setErr("Staff accounts are set up by an admin. Use the MindShift staff tab to sign in.");
@@ -3303,6 +3384,14 @@ function SignupForm({ onDone, onCancel }) {
   const Check = ({ k, children }) => (
     <label htmlFor={`su-${k}`} className="flex items-start gap-3 text-sm cursor-pointer"><input id={`su-${k}`} type="checkbox" className="w-4 h-4 mt-0.5" style={{ accentColor: G }} checked={f[k]} onChange={(e) => set(k, e.target.checked)} /><span>{children}</span></label>
   );
+  if (step === "clerk") return (
+    <div className="flex flex-col gap-4 fade-in">
+      <div><h1 className="text-4xl font-semibold" style={{ fontFamily: '"Zilla Slab", Rockwell, Georgia, serif' }}>Create your account</h1><p className="text-sm mt-1" style={{ color: MUT }}>Thanks. Now set up your sign-in. We'll email you a code to confirm it's you.</p></div>
+      <ClerkMount clerk={clerk} kind="signup" extra={{ unsafeMetadata: { clinician: f.current === "yes" ? f.clinician : null, ageConfirmed18: true, notEmergencyAck: true, agreedTermsAndNpp: new Date().toISOString() } }} />
+      <button type="button" onClick={() => { setStep("form"); setErr(""); }} className="text-sm font-semibold" style={{ color: LINK }}>Back</button>
+      <p className="text-sm text-center" style={{ color: MUT }}>Already have an account? <button type="button" onClick={onCancel} className="font-semibold" style={{ color: LINK }}>Sign in</button></p>
+    </div>
+  );
   if (step === "verify") return (
     <form onSubmit={verify} className="flex flex-col gap-4 fade-in" noValidate>
       <h1 className="text-4xl font-semibold" style={{ fontFamily: '"Zilla Slab", Rockwell, Georgia, serif' }}>Check your email</h1>
@@ -3316,6 +3405,7 @@ function SignupForm({ onDone, onCancel }) {
   return (
     <form onSubmit={submit} className="flex flex-col gap-4 fade-in" noValidate>
       <div><h1 className="text-4xl font-semibold" style={{ fontFamily: '"Zilla Slab", Rockwell, Georgia, serif' }}>Create your account</h1><p className="text-sm mt-1" style={{ color: MUT }}>Free for anyone. No invitation needed.</p></div>
+      {!clerk && <>
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1.5"><label htmlFor="su-first" className="text-sm font-semibold">First name</label><input id="su-first" autoComplete="given-name" className={field} style={fStyle} value={f.first} onChange={(e) => set("first", e.target.value)} /></div>
         <div className="flex flex-col gap-1.5"><label htmlFor="su-last" className="text-sm font-semibold">Last name <span className="font-normal" style={{ color: MUT }}>(optional)</span></label><input id="su-last" autoComplete="family-name" className={field} style={fStyle} value={f.last} onChange={(e) => set("last", e.target.value)} /></div>
@@ -3326,6 +3416,7 @@ function SignupForm({ onDone, onCancel }) {
         <div className="flex flex-col gap-1.5"><label htmlFor="su-pw2" className="text-sm font-semibold">Confirm</label><input id="su-pw2" type="password" autoComplete="new-password" className={field} style={fStyle} value={f.pw2} onChange={(e) => set("pw2", e.target.value)} /></div>
       </div>
       <p className="text-xs -mt-2" style={{ color: MUT }}>At least 8 characters, with letters and a number.</p>
+      </>}
       <div className="flex flex-col gap-2">
         <p className="text-sm font-semibold">Do you currently see a MindShift therapist?</p>
         <div className="grid grid-cols-2 rounded-full p-1" style={{ background: "#EEF5E8" }}>
@@ -3355,14 +3446,14 @@ function SignupForm({ onDone, onCancel }) {
         <p className="text-xs" style={{ color: MUT }}>Creating an account doesn't make you a MindShift client or start therapy.</p>
       </div>
       {err && <p className="text-sm font-medium" style={{ color: "#B42318" }} role="alert">{err}</p>}
-      <button type="submit" className="w-full rounded-full py-3 font-semibold text-white hover:opacity-90" style={{ background: G }}>Create account</button>
+      <button type="submit" className="w-full rounded-full py-3 font-semibold text-white hover:opacity-90" style={{ background: G }}>{clerk ? "Continue" : "Create account"}</button>
       <p className="text-sm text-center" style={{ color: MUT }}>Already have an account? <button type="button" onClick={onCancel} className="font-semibold" style={{ color: LINK }}>Sign in</button></p>
       {legal && <LegalModal which={legal} onClose={() => setLegal(null)} onAccept={() => { setRead((r) => ({ ...r, [legal]: true })); setLegal(null); }} />}
     </form>
   );
 }
 
-function LoginScreen({ onLogin }) {
+function LoginScreen({ onLogin, clerk }) {
   const [mode, setMode] = useState("signin");
   const [legalL, setLegalL] = useState(null);
   const [tab, setTab] = useState("client");
@@ -3408,9 +3499,25 @@ function LoginScreen({ onLogin }) {
       </div>
       <div className="px-4 py-10 md:px-12 flex items-center justify-center" style={{ background: "#FFFFFF" }}>
         <div className="w-full max-w-sm flex flex-col gap-5">
-          <div className="rounded-xl px-3.5 py-2.5 text-xs" style={{ background: "#FFF6E5", border: "1px solid #F2D49B", color: "#5C4413" }}><b>Prototype.</b> Don't enter real names, passwords, or health information. Sign-in is simulated.</div>
-          {TEST_MODE && <div className="rounded-xl px-3.5 py-2.5 text-xs font-semibold" style={{ background: "#FDECEA", border: "1px solid #F5B5AE", color: "#8A1C12" }}>Test mode is on: type any email and tap Continue to open the client dashboard. Turn off before launch.</div>}
-          {mode === "signup" ? <SignupForm onDone={onLogin} onCancel={() => setMode("signin")} /> : step === "creds" ? (
+          {clerk ? (
+            <div className="rounded-xl px-3.5 py-2.5 text-xs" style={{ background: "#FFF6E5", border: "1px solid #F2D49B", color: "#5C4413" }}><b>Test version.</b> Accounts are real, but please don't enter health information until the practice's secure sign-in agreement (BAA) is in place.</div>
+          ) : (
+            <div className="rounded-xl px-3.5 py-2.5 text-xs" style={{ background: "#FFF6E5", border: "1px solid #F2D49B", color: "#5C4413" }}><b>Prototype.</b> Don't enter real names, passwords, or health information. {clerk === null ? "Secure sign-in couldn't load, so sign-in is simulated." : "Sign-in is simulated."}</div>
+          )}
+          {TEST_MODE && <div className="rounded-xl px-3.5 py-2.5 text-xs font-semibold flex items-center justify-between gap-3" style={{ background: "#FDECEA", border: "1px solid #F5B5AE", color: "#8A1C12" }}><span>Test mode is on. Turn off before launch.</span><button type="button" onClick={() => onLogin({ ...DEMO_USERS.client })} className="underline shrink-0">Skip sign-in</button></div>}
+          {clerk === undefined ? (
+            <div className="flex flex-col items-center gap-3 py-16 text-sm" style={{ color: "#5A6358" }} role="status"><span className="w-8 h-8 rounded-full border-4 animate-spin" style={{ borderColor: "#CFE3C3", borderTopColor: G }} />Loading secure sign-in…</div>
+          ) : clerk && mode !== "signup" ? (
+            <div className="flex flex-col gap-4">
+              <h1 className="text-4xl font-semibold" style={{ fontFamily: '"Zilla Slab", Rockwell, Georgia, serif' }}>Welcome back</h1>
+              <div className="grid grid-cols-2 rounded-full p-1" style={{ background: "#EEF5E8" }} role="tablist">
+                {[["client", "Client"], ["staff", "MindShift staff"]].map(([k, l]) => <button type="button" key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className="rounded-full py-2 text-sm font-semibold transition" style={tabBtn(tab === k)}>{l}</button>)}
+              </div>
+              {tab === "staff" && <p className="text-xs" style={{ color: "#5A6358" }}>Sign in with your MindShift work email. An admin sets your staff access.</p>}
+              <ClerkMount clerk={clerk} kind="signin" />
+              {tab === "client" && <p className="text-sm text-center" style={{ color: "#5A6358" }}>New here? <button type="button" onClick={() => setMode("signup")} className="font-semibold" style={{ color: G }}>Create an account</button></p>}
+            </div>
+          ) : mode === "signup" ? <SignupForm onDone={onLogin} onCancel={() => setMode("signin")} clerk={clerk || null} /> : step === "creds" ? (
             <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
               <h1 className="text-4xl font-semibold" style={{ fontFamily: '"Zilla Slab", Rockwell, Georgia, serif' }}>Welcome back</h1>
               <div className="grid grid-cols-2 rounded-full p-1" style={{ background: "#EEF5E8" }} role="tablist">
